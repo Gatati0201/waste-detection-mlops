@@ -3,29 +3,30 @@ version: '3.8'
 services:
   # MLflow Server
   mlflow:
-    image: python:3.11-slim
+    image: ghcr.io/mlflow/mlflow:v2.10.0
     container_name: mlflow
     ports:
       - "5000:5000"
     environment:
-      - MLFLOW_TRACKING_URI=http://localhost:5000
+      - MLFLOW_BACKEND_STORE_URI=sqlite:///mlflow/mlflow.db
+      - MLFLOW_DEFAULT_ARTIFACT_ROOT=/mlflow/artifacts
+      - MLFLOW_HOST=0.0.0.0
     volumes:
       - ./data/mlflow:/mlflow
-      - ./mlflow_setup.py:/mlflow_setup.py
-      - ./models:/models
     command: >
-      bash -c "
-        pip install mlflow==2.10.0 ultralytics==8.1.0 torch==2.1.2 torchvision==0.16.2 pillow numpy --quiet &&
-        python /mlflow_setup.py &&
-        mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:///mlflow/mlflow.db --default-artifact-root /mlflow/artifacts
-      "
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri sqlite:///mlflow/mlflow.db
+      --default-artifact-root /mlflow/artifacts
     networks:
       - waste-detection-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000')\""]
       interval: 30s
       timeout: 10s
       retries: 5
+      start_period: 60s
 
   # API FastAPI
   api:

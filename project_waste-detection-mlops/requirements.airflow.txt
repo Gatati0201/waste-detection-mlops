@@ -1,0 +1,9 @@
+# Airflow-specific dependencies (without sqlalchemy/mlflow to avoid conflicts)
+# Airflow 2.8.1 already has its own sqlalchemy version < 2.0
+
+# For generate_patrol_db.py script
+requests==2.31.0
+
+# Utils
+python-json-logger==2.0.7
+tzdata==2023.4

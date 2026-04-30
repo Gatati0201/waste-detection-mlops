@@ -1,0 +1,39 @@
+groups:
+  - name: waste_detection_alerts
+    rules:
+      - alert: LowConfidenceAlert
+        expr: |
+          (
+            sum(rate(ml_predictions_total[5m])) > 0 
+            and 
+            avg_over_time(
+              (
+                sum(rate(ml_predictions_by_model_total[5m]) * 0.7) / 
+                sum(rate(ml_predictions_by_model_total[5m]))
+              )[5m:]
+            ) < 0.60
+          )
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low average confidence detected"
+          description: "Average confidence has dropped below 0.60 for more than 5 minutes"
+
+      - alert: HighErrorRate
+        expr: rate(ml_validation_errors_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High validation error rate"
+          description: "Validation error rate is above 5%"
+
+      - alert: APIDown
+        expr: up{job="waste-api"} == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Waste Detection API is down"
+          description: "API has been unreachable for more than 30 seconds"

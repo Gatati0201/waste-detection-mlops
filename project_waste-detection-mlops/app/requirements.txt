@@ -1,0 +1,5 @@
+streamlit==1.30.0
+streamlit-folium==0.18.0
+folium==0.15.1
+requests==2.31.0
+pillow==10.2.0

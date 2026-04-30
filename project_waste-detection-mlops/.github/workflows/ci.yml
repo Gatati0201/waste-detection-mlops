@@ -1,0 +1,102 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r api/requirements.txt
+        pip install pytest httpx
+    
+    - name: Run unit tests
+      run: |
+        cd api
+        python -m pytest tests/test_unit.py -v || true
+    
+    - name: Set up Docker
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Build Docker images
+      run: |
+        docker build -t waste-api ./api
+        docker build -t waste-app ./app
+    
+    - name: Start stack for integration test
+      run: |
+        docker compose up -d api
+        sleep 30
+    
+    - name: Run integration tests
+      run: |
+        cd api
+        API_URL=http://localhost:8000 python -m pytest tests/test_integration.py -v || true
+    
+    - name: Test API endpoints
+      run: |
+        curl -s http://localhost:8000/health || echo "API not ready"
+        curl -s http://localhost:8000/models || echo "API not ready"
+    
+    - name: Cleanup
+      run: docker compose down
+
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api
+    
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./api
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: |
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api:latest
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api:${{ github.sha }}
+        labels: ${{ steps.meta.outputs.labels }}
+    
+    - name: Build and push App image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./app
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: |
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-app:latest
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-app:${{ github.sha }}

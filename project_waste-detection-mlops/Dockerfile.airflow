@@ -1,0 +1,17 @@
+FROM apache/airflow:2.8.1-python3.11
+
+USER root
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+
+USER airflow
+
+COPY requirements.txt /requirements.txt
+RUN pip install --no-cache-dir -r /requirements.txt
+
+COPY generate_patrol_db.py /opt/airflow/generate_patrol_db.py
+
+ENV AIRFLOW_HOME=/opt/airflow
+RUN airflow db init
+RUN airflow users create -u admin -p admin -f Airflow -l Admin -r Admin -e admin@example.com
+
+CMD ["bash", "-c", "airflow db init && airflow users create -u admin -p admin -f Airflow -l Admin -r Admin -e admin@example.com 2>/dev/null || true && airflow scheduler & airflow webserver"]

@@ -1,0 +1,145 @@
+version: '3.8'
+
+services:
+  # MLflow Server
+  mlflow:
+    image: python:3.11-slim
+    container_name: mlflow
+    ports:
+      - "5000:5000"
+    environment:
+      - MLFLOW_TRACKING_URI=http://localhost:5000
+    volumes:
+      - ./data/mlflow:/mlflow
+      - ./mlflow_setup.py:/mlflow_setup.py
+      - ./models:/models
+    command: >
+      bash -c "
+        pip install mlflow==2.10.0 ultralytics==8.1.0 torch==2.1.2 torchvision==0.16.2 pillow numpy --quiet &&
+        python /mlflow_setup.py &&
+        mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:///mlflow/mlflow.db --default-artifact-root /mlflow/artifacts
+      "
+    networks:
+      - waste-detection-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # API FastAPI
+  api:
+    build: ./api
+    container_name: api
+    ports:
+      - "8000:8000"
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - DATABASE_PATH=/data/app_detections.db
+      - LOG_PATH=/logs/predictions.jsonl
+    volumes:
+      - ./data:/data
+      - ./logs:/logs
+      - ./models:/models:ro
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    networks:
+      - waste-detection-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Streamlit Application
+  app:
+    build: ./app
+    container_name: app
+    ports:
+      - "8501:8501"
+    environment:
+      - API_URL=http://api:8000
+    depends_on:
+      - api
+    networks:
+      - waste-detection-network
+
+  # Prometheus
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./monitoring/rules.yml:/etc/prometheus/rules.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - waste-detection-network
+
+  # Grafana
+  grafana:
+    image: grafana/grafana:10.3.0
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml
+      - ./monitoring/grafana/dashboard.json:/etc/grafana/provisioning/dashboards/dashboard.json
+    depends_on:
+      - prometheus
+    networks:
+      - waste-detection-network
+
+  # Alertmanager
+  alertmanager:
+    image: prom/alertmanager:v0.26.0
+    container_name: alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+    networks:
+      - waste-detection-network
+
+  # Airflow (Standalone mode)
+  airflow:
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+    container_name: airflow
+    ports:
+      - "8080:8080"
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__SQL_ALCHEMY_CONN=sqlite:////data/airflow.db
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=false
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./data:/data
+      - ./logs:/opt/airflow/logs
+      - ./generate_patrol_db.py:/opt/airflow/generate_patrol_db.py
+    depends_on:
+      - api
+    networks:
+      - waste-detection-network
+
+volumes:
+  prometheus_data:
+  grafana_data:
+  mlflow_data:
+
+networks:
+  waste-detection-network:
+    driver: bridge

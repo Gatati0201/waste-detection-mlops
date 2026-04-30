@@ -1,0 +1,38 @@
+# API dependencies
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-multipart==0.0.6
+pydantic==2.5.3
+pillow==10.2.0
+numpy==1.26.3
+
+# MLflow and ML dependencies
+mlflow==2.10.0
+ultralytics==8.1.0
+torch==2.1.2
+torchvision==0.16.2
+
+# Prometheus metrics
+prometheus-client==0.19.0
+starlette-prometheus==0.12.0
+
+# Database
+sqlalchemy==2.0.25
+
+# Streamlit
+streamlit==1.30.0
+streamlit-folium==0.18.0
+folium==0.15.1
+requests==2.31.0
+
+# Airflow (install via pip for standalone mode)
+apache-airflow==2.8.1
+
+# Testing
+pytest==7.4.4
+pytest-asyncio==0.23.3
+httpx==0.26.0
+
+# Utils
+python-json-logger==2.0.7
+tzdata==2023.4
